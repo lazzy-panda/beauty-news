@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "NotebookLM Deep Research Launcher",
+  "version": "1.0.0",
+  "description": "Opens NotebookLM and runs a preconfigured deep research flow for AI/VR/Tech/Startups/Kickstarter.",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": ["https://notebooklm.google.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Run NotebookLM Research"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://notebooklm.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

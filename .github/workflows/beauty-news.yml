@@ -1,0 +1,52 @@
+name: Beauty News Daily
+
+on:
+  schedule:
+    # 03:00 UTC = 06:00 MSK (pipeline takes ~30-90 min)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # manual trigger from GitHub UI
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r python/requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Restore NotebookLM auth
+        run: |
+          mkdir -p ~/.notebooklm
+          echo "${{ secrets.NOTEBOOKLM_STORAGE_STATE }}" | base64 -d > ~/.notebooklm/storage_state.json
+
+      - name: Restore news log cache
+        uses: actions/cache@v4
+        with:
+          path: python/output/news_log.json
+          key: news-log-${{ github.run_id }}
+          restore-keys: news-log-
+
+      - name: Run research pipeline
+        working-directory: python
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        run: python main.py run
+
+      - name: Upload output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beauty-news-${{ github.run_id }}
+          path: python/output/
+          retention-days: 30
