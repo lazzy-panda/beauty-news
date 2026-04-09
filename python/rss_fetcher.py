@@ -115,18 +115,32 @@ def _strip_html(text: str) -> str:
 
 
 async def parse_feed(feed_config: dict) -> list[dict]:
-    """Parse RSS feed URL, return list of article dicts."""
-    loop = asyncio.get_event_loop()
+    """Parse RSS feed URL, return list of article dicts.
+
+    Fetches the XML via httpx with a browser User-Agent so sites that
+    reject feedparser's default UA (e.g. adindex.ru) work too.
+    """
+    feed_url = feed_config["url"]
     try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(feed_url, headers={"User-Agent": USER_AGENT})
+            resp.raise_for_status()
+            raw = resp.content
+    except Exception as e:
+        logger.warning("Feed fetch failed (%s): %s", feed_url, e)
+        return []
+
+    try:
+        loop = asyncio.get_event_loop()
         parsed = await asyncio.wait_for(
-            loop.run_in_executor(None, feedparser.parse, feed_config["url"]),
+            loop.run_in_executor(None, feedparser.parse, raw),
             timeout=30,
         )
     except asyncio.TimeoutError:
-        logger.warning("Feed parse timeout (%s)", feed_config["url"])
+        logger.warning("Feed parse timeout (%s)", feed_url)
         return []
     except Exception as e:
-        logger.warning("Feed parse failed (%s): %s", feed_config["url"], e)
+        logger.warning("Feed parse failed (%s): %s", feed_url, e)
         return []
 
     articles = []
