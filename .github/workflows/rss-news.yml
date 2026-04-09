@@ -2,8 +2,8 @@ name: RSS News Bot
 
 on:
   schedule:
-    # Every 20 minutes, 04:00-18:00 UTC (07:00-21:00 MSK = quiet hours respected)
-    - cron: '*/20 4-18 * * *'
+    # Every 2 hours, 04:00-18:00 UTC (07:00-21:00 MSK = quiet hours respected)
+    - cron: '0 4-18/2 * * *'
   workflow_dispatch: # manual trigger
 
 jobs:
