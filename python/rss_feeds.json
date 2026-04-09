@@ -61,5 +61,12 @@
 
   { "category": "Retail / e-commerce", "url": "https://www.retaildive.com/feeds/news/", "hashtags": "#retail #ecommerce #бренды" },
   { "category": "Retail / e-commerce", "url": "https://www.modernretail.co/feed/", "hashtags": "#retail #ecommerce #DTC" },
-  { "category": "Retail / e-commerce", "url": "https://www.retailtouchpoints.com/feed", "hashtags": "#retail #ecommerce #технологии" }
+  { "category": "Retail / e-commerce", "url": "https://www.retailtouchpoints.com/feed", "hashtags": "#retail #ecommerce #технологии" },
+
+  { "category": "Beauty & Fashion Россия", "url": "https://theblueprint.ru/rss", "hashtags": "#fashion #beauty #Россия" },
+  { "category": "Beauty & Fashion Россия", "url": "https://beautyhack.ru/rss", "hashtags": "#beauty #Россия #уход" },
+  { "category": "Beauty & Fashion Россия", "url": "https://www.beautyinsider.ru/feed/", "hashtags": "#beauty #Россия #обзоры" },
+  { "category": "Beauty & Fashion Россия", "url": "https://peopletalk.ru/feed/", "hashtags": "#fashion #beauty #Россия" },
+  { "category": "Beauty & Fashion Россия", "url": "https://posta-magazine.ru/feed/", "hashtags": "#fashion #lifestyle #Россия" },
+  { "category": "Маркетинг и PR Россия", "url": "https://www.sostav.ru/rss", "hashtags": "#маркетинг #реклама #Россия" }
 ]
