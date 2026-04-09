@@ -116,6 +116,33 @@ def is_title_duplicate(title: str, posted_titles: set) -> bool:
 # Caption builder
 # ---------------------------------------------------------------------------
 
+def format_russian_article(title: str, description: str) -> str:
+    """
+    Build a Telegram HTML post from a Russian-language RSS item
+    without sending it to OpenAI. Title becomes bold; description
+    is stripped of HTML and kept as plain text below.
+    """
+    import html
+    import re
+
+    def _strip(s: str) -> str:
+        s = re.sub(r"<[^>]+>", "", s or "")
+        s = html.unescape(s)
+        return re.sub(r"\s+", " ", s).strip()
+
+    clean_title = _strip(title)
+    clean_desc = _strip(description)
+
+    # Escape &, <, > in plain text for Telegram HTML parse mode
+    def _esc(s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    bold_title = f"<b>{_esc(clean_title)}</b>"
+    if clean_desc and clean_desc != clean_title:
+        return f"{bold_title}\n\n{_esc(clean_desc)}"
+    return bold_title
+
+
 def build_caption(text: str, url: str, hashtags: str) -> str:
     """
     Format:
@@ -191,8 +218,12 @@ async def _post_one(posted_urls: set, posted_titles: set, recent_tags: list) -> 
             continue
 
         try:
-            text = await translate_article(article["title"], article["description"])
-            text = await add_wiki_links(text)
+            if feed.get("lang") == "ru":
+                # Russian-language feed: skip OpenAI translation, format locally.
+                text = format_russian_article(article["title"], article["description"])
+            else:
+                text = await translate_article(article["title"], article["description"])
+                text = await add_wiki_links(text)
             caption = build_caption(text, article["url"], article["hashtags"])
             ok = await send_photo(article["image_data"], caption)
             # Always mark as seen to avoid infinite retry on bad images
