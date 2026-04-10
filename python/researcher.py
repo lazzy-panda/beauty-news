@@ -230,7 +230,7 @@ async def _wait_for_sources(client, notebook_id: str, timeout: int = 120) -> Non
     logger.warning("No sources appeared after %ds — proceeding anyway.", timeout)
 
 
-RATE_LIMIT_RETRY_DELAYS = [60, 120, 300]  # seconds: 1 min, 2 min, 5 min
+RATE_LIMIT_RETRY_DELAYS = [300, 600, 900]  # seconds: 5 min, 10 min, 15 min
 
 
 async def _generate_audio_with_retry(client, notebook_id: str):

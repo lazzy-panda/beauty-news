@@ -2,8 +2,8 @@ name: Beauty News Daily
 
 on:
   schedule:
-    # 06:00 UTC = 09:00 MSK (pipeline takes ~30-90 min → подкаст приходит около 10:00 MSK)
-    - cron: '0 6 * * *'
+    # 10:00 UTC = 13:00 MSK (разнесено от Good News 03:00 UTC, даёт лимитам NotebookLM сброситься)
+    - cron: '0 10 * * *'
   workflow_dispatch: # manual trigger from GitHub UI
 
 jobs:
