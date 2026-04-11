@@ -121,7 +121,9 @@ async def run_research_session() -> dict:
             logger.info("Audio saved: %s", audio_path)
             results["audio"] = str(audio_path)
 
-            # Send to Telegram
+            # Send cover image + audio to Telegram
+            if telegram_sender.COVER_PATH.exists():
+                await telegram_sender.send_photo(telegram_sender.COVER_PATH)
             caption = f"<b>{notebook_name}</b>"
             await telegram_sender.send_audio(str(audio_path), caption=caption)
         except Exception as exc:

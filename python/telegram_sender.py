@@ -15,7 +15,36 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://api.telegram.org/bot{token}/{method}"
 
 
-THUMBNAIL_PATH = Path(__file__).parent.parent / "assets" / "freepik_minimalist-luxury-logo-fo_2761976520.png"
+COVER_PATH = Path(__file__).parent.parent / "assets" / "freepik_minimalist-luxury-logo-fo_2761976520.png"
+
+
+async def send_photo(image_path: Path, caption: str = "") -> bool:
+    """Send a photo to the Telegram channel. Used as a cover before audio."""
+    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHANNEL_ID:
+        return False
+
+    url = API_BASE.format(token=config.TELEGRAM_BOT_TOKEN, method="sendPhoto")
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            with open(image_path, "rb") as f:
+                response = await client.post(
+                    url,
+                    data={
+                        "chat_id": config.TELEGRAM_CHANNEL_ID,
+                        "caption": caption,
+                        "parse_mode": "HTML",
+                    },
+                    files={"photo": (image_path.name, f, "image/png")},
+                )
+        if response.status_code == 200 and response.json().get("ok"):
+            logger.info("Cover photo sent to Telegram.")
+            return True
+        else:
+            logger.error("Telegram sendPhoto error: %s", response.text)
+            return False
+    except Exception as exc:
+        logger.error("Failed to send cover photo: %s", exc)
+        return False
 
 
 async def send_audio(audio_path: str, caption: str = "") -> bool:
@@ -36,24 +65,16 @@ async def send_audio(audio_path: str, caption: str = "") -> bool:
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            files = {"audio": (path.name, open(path, "rb"), "audio/mpeg")}
-            if THUMBNAIL_PATH.exists():
-                files["thumbnail"] = (THUMBNAIL_PATH.name, open(THUMBNAIL_PATH, "rb"), "image/png")
-
-            response = await client.post(
-                url,
-                data={
-                    "chat_id": config.TELEGRAM_CHANNEL_ID,
-                    "caption": caption,
-                    "parse_mode": "HTML",
-                },
-                files=files,
-            )
-
-            # Close file handles
-            for _, fobj in files.values():
-                if hasattr(fobj, "close"):
-                    fobj.close()
+            with open(path, "rb") as f:
+                response = await client.post(
+                    url,
+                    data={
+                        "chat_id": config.TELEGRAM_CHANNEL_ID,
+                        "caption": caption,
+                        "parse_mode": "HTML",
+                    },
+                    files={"audio": (path.name, f, "audio/mpeg")},
+                )
 
         if response.status_code == 200 and response.json().get("ok"):
             logger.info("Audio sent to Telegram channel %s.", config.TELEGRAM_CHANNEL_ID)
