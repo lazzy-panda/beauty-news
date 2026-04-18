@@ -50,3 +50,31 @@ jobs:
           name: beauty-news-${{ github.run_id }}
           path: python/output/
           retention-days: 30
+
+      - name: Notify admin on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_ADMIN_CHAT_ID not set — skipping notification."
+            exit 0
+          fi
+          LOG=$(gh run view ${{ github.run_id }} --log-failed 2>/dev/null || true)
+          if echo "$LOG" | grep -q "Authentication expired or invalid"; then
+            REASON="🔑 <b>NotebookLM auth протух</b>%0A%0AПерелогинься локально: <code>cd python && python main.py login</code>, затем обнови секрет <code>NOTEBOOKLM_STORAGE_STATE</code>."
+          elif echo "$LOG" | grep -qi "rate.\?limit"; then
+            REASON="⏳ <b>NotebookLM rate limit</b>%0A%0AСегодня аудио не будет — попробует завтра."
+          else
+            REASON="❌ <b>Beauty News упал</b>%0A%0AПричина неизвестна — глянь логи."
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_ADMIN_CHAT_ID}" \
+            -d "parse_mode=HTML" \
+            -d "disable_web_page_preview=true" \
+            --data-urlencode "text=${REASON}
+
+<a href=\"${RUN_URL}\">Run log</a>"
