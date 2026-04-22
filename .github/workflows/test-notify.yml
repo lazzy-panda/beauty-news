@@ -1,0 +1,23 @@
+name: Test admin notification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test message to admin
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_ADMIN_CHAT_ID not set"
+            exit 1
+          fi
+          TEXT="✅ <b>Beauty News — тест уведомлений</b>%0A%0AЕсли видишь это сообщение — бот может достучаться до тебя. Боевые уведомления придут от этого же бота при падении пайплайна."
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_ADMIN_CHAT_ID}" \
+            -d "parse_mode=HTML" \
+            --data-urlencode "text=${TEXT}" | python3 -c "import json,sys; r=json.load(sys.stdin); print('OK' if r.get('ok') else r)"
