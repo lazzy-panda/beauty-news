@@ -43,13 +43,18 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: python main.py run
 
-      - name: Upload output artifacts
-        if: always()
+      - name: Upload debug artifacts on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: beauty-news-${{ github.run_id }}
-          path: python/output/
-          retention-days: 30
+          path: |
+            python/output/*.json
+            python/output/*.log
+            python/output/*.txt
+            python/output/*.html
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Notify admin on failure
         if: failure()

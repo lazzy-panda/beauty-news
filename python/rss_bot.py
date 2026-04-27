@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 
@@ -108,6 +109,82 @@ def is_title_duplicate(title: str, posted_titles: set) -> bool:
     # Substring match (for titles ≥ 30 chars)
     for prev in posted_titles:
         if len(prev) >= 30 and (prev in norm or norm in prev):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Sexual content filter
+# ---------------------------------------------------------------------------
+# Beauty/fashion media frequently use words like "nude", "sexy", "sensual"
+# in a purely cosmetic sense (nude lipstick, sexy red, sensual fragrance).
+# We therefore only match terms that are virtually always explicit, or
+# unambiguous phrases ("nude photos", "секс-скандал").
+
+_SEXUAL_PATTERNS = [
+    # Explicit English terms
+    r"\bporn\w*",
+    r"\bpornhub\b",
+    r"\bonlyfans\b",
+    r"\bxxx\b",
+    r"\berotic\w*",
+    r"\bhentai\b",
+    r"\bfetish\w*",
+    r"\bbdsm\b",
+    r"\borgasm\w*",
+    r"\bmasturbat\w*",
+    r"\bintercourse\b",
+    r"\brape\w*",
+    r"\bincest\w*",
+    r"\bpedoph\w*",
+    r"\bgenitals?\b",
+    r"\bsodom\w*",
+    # Unambiguous English phrases
+    r"\bsex (?:tape|scene|scenes|scandal|scandals|worker|workers|party|parties|"
+    r"ring|rings|crime|crimes|offender|offenders|abuse|assault|trafficking|"
+    r"trade|slavery|work|act|acts|addict|addiction|toy|toys|doll|dolls)\b",
+    r"\bsexual (?:abuse|assault|harassment|misconduct|violence|predator|exploitation)\b",
+    r"\bnude (?:photo|photos|pic|pics|picture|pictures|shoot|shoots|leak|leaks|"
+    r"scene|scenes|selfie|selfies)\b",
+    r"\bleaked nude\w*",
+    r"\btopless (?:photo|photos|pic|pics|selfie|selfies|shoot|scene|scenes)\b",
+    r"\bnaked (?:photo|photos|pic|pics|selfie|selfies|body|bodies)\b",
+    # Russian explicit
+    r"порн\w*",
+    r"эрот\w*",
+    r"разврат\w*",
+    r"проститут\w*",
+    r"бдсм",
+    r"мастурб\w*",
+    r"оргазм\w*",
+    r"изнасил\w*",
+    r"педофил\w*",
+    r"садомаз\w*",
+    r"\bпенис\w*",
+    r"вагин\w+",
+    r"гениталий|гениталии|гениталиям",
+    # Russian phrases
+    r"секс[- ]?скандал\w*",
+    r"секс[- ]?тур\w*",
+    r"секс[- ]?работ\w*",
+    r"секс[- ]?шоп\w*",
+    r"секс[- ]?вечеринк\w*",
+    r"секс[- ]?рабын\w*",
+    r"секс[- ]?игрушк\w*",
+    r"интимн(?:ое|ые|ого|ым|ом|ой) (?:фото|видео|снимк|снимки|снимок|кадр|кадры|переписк)",
+    r"откровенн(?:ое|ые|ых|ыми) (?:фото|видео|снимк|кадр)",
+    r"обнажённ?(?:ая|ое|ые|ого|ых|ыми) (?:фото|натур|тело|снимк)",
+    r"полов(?:ой|ые|ым) (?:акт|акты)",
+    r"домогательств\w*",
+]
+
+_SEXUAL_RE = re.compile("|".join(_SEXUAL_PATTERNS), re.IGNORECASE)
+
+
+def is_sexual_content(*texts: str) -> bool:
+    """Return True if any of the given text fragments matches an explicit pattern."""
+    for t in texts:
+        if t and _SEXUAL_RE.search(t):
             return True
     return False
 
@@ -213,6 +290,13 @@ async def _post_one(posted_urls: set, posted_titles: set, recent_tags: list) -> 
         # Skip if title too similar to an already-posted article
         if is_title_duplicate(article["title"], posted_titles):
             logger.info("Skipped duplicate title: %s", article["title"])
+            posted_urls.add(article["url"])
+            save_posted(article["url"])
+            continue
+
+        # Skip sexually explicit content
+        if is_sexual_content(article["title"], article["description"], article["url"]):
+            logger.info("Skipped sexual content: %s", article["title"])
             posted_urls.add(article["url"])
             save_posted(article["url"])
             continue
