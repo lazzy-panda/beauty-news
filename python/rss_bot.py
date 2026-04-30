@@ -26,7 +26,7 @@ from wiki_linker import add_wiki_links
 logger = logging.getLogger(__name__)
 
 POSTED_URLS_FILE = Path(config.OUTPUT_DIR) / "rss_posted.json"
-POST_INTERVAL = 10 * 60  # seconds — min gap between posts
+POST_INTERVAL = 30 * 60  # seconds — min gap between posts
 TG_API = "https://api.telegram.org/bot{token}/{method}"
 # Telegram caption limit is 1024 chars
 CAPTION_LIMIT = 1024

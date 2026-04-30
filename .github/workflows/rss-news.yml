@@ -4,7 +4,7 @@ on:
   schedule:
     # Every 5 minutes, 04:00-18:00 UTC (07:00-21:00 MSK = quiet hours respected)
     # GitHub Actions throttles cron to ~1 run/hour; */5 ensures it actually
-    # fires roughly every 20 min. POST_INTERVAL (10 min) prevents double-posting.
+    # fires roughly every 20 min. POST_INTERVAL (30 min) gates real posting.
     - cron: '*/5 4-18 * * *'
   workflow_dispatch: # manual trigger
 
