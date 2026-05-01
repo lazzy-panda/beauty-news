@@ -19,9 +19,33 @@ logger = logging.getLogger(__name__)
 # Only check Wikipedia for terms longer than this
 MIN_NOUN_LEN = 3
 # Max nouns to look up per post (avoid over-linking)
-MAX_NOUNS = 4
+MAX_NOUNS = 6
 # Seconds to wait between Wikipedia requests (be polite)
 REQUEST_TIMEOUT = 5
+
+
+def _noun_variants(noun: str) -> list[str]:
+    """Generate dash/hyphen/em-dash variants for a multi-word noun.
+
+    "Цермело-Френкеля" → ["Цермело-Френкеля", "Цермело—Френкеля",
+                          "Цермело–Френкеля", "Цермело — Френкеля",
+                          "Цермело Френкеля"]
+    Wikipedia is inconsistent: "Аксиоматика Цермело — Френкеля" lives at one
+    URL, "теория Цермело-Френкеля" redirects to another. Trying a few variants
+    drastically improves hit rate without blowing up the request budget.
+    """
+    variants = [noun]
+    seen = {noun}
+    # Substitute each separator class with each other variant
+    seps = ["-", "–", "—", " — ", " – ", " "]
+    for sep_pattern in (r"[-–—]", r" [-–—] "):
+        if re.search(sep_pattern, noun):
+            for sep in seps:
+                cand = re.sub(sep_pattern, sep, noun)
+                if cand not in seen:
+                    variants.append(cand)
+                    seen.add(cand)
+    return variants
 
 # --- In-memory + disk cache for Wikipedia lookups ---
 _CACHE_FILE = Path(__file__).parent / "output" / "wiki_cache.json"
@@ -87,30 +111,36 @@ def _extract_italic_nouns(text: str) -> list[str]:
 
 
 async def _wiki_url(noun: str, client: httpx.AsyncClient) -> str | None:
-    """Return Wikipedia article URL for noun, RU preferred, EN fallback."""
+    """Return Wikipedia article URL for noun, RU preferred, EN fallback.
+
+    Tries dash/hyphen/em-dash variants of multi-part nouns to defeat the
+    common case where Wikipedia article uses a different separator than
+    the source text (e.g. "Цермело — Френкеля" vs "Цермело-Френкеля").
+    """
     hit, cached_url = _cache_get(noun)
     if hit:
         return cached_url
 
-    for lang in ("ru", "en"):
-        try:
-            url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(noun)}"
-            resp = await client.get(url, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json()
-                page_url = data.get("content_urls", {}).get("desktop", {}).get("page")
-                _cache_set(noun, page_url)
-                return page_url
-            if resp.status_code == 404:
+    for variant in _noun_variants(noun):
+        for lang in ("ru", "en"):
+            try:
+                url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(variant)}"
+                resp = await client.get(url, timeout=REQUEST_TIMEOUT)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    page_url = data.get("content_urls", {}).get("desktop", {}).get("page")
+                    _cache_set(noun, page_url)
+                    return page_url
+                if resp.status_code == 404:
+                    continue
+                if resp.status_code == 429:
+                    return None
+            except Exception as e:
+                logger.debug("Wikipedia %s lookup failed for %r: %s", lang, variant, e)
+                # Try the next variant rather than aborting on a single transient error.
                 continue
-            # Rate limited or other error — don't cache, retry next time
-            if resp.status_code == 429:
-                return None
-        except Exception as e:
-            logger.debug("Wikipedia %s lookup failed for %r: %s", lang, noun, e)
-            return None
 
-    # Not found in any language — cache the miss
+    # Not found in any language / variant — cache the miss
     _cache_set(noun, None)
     return None
 

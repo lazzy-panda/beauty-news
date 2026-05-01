@@ -382,6 +382,64 @@ _MILITARY_PATTERNS = [
     r"\bСБУ\b",
     r"\bФСБ\b",
     r"\bЦАХАЛ\w*",
+    # ---- War-adjacent: occupied territories / civilian casualties / press in conflict ----
+    r"\boccupied palestin\w*",
+    r"\bgaza (?:strip|war|conflict|crisis|hospital|hospitals|civilian|civilians|"
+    r"casualt\w+|death|deaths|killed|under attack|under fire|bombardment|"
+    r"siege|blockade|truce|ceasefire|aid|reconstruction)\b",
+    r"\bwest bank (?:settlement|settlements|raid|raids|incursion|incursions|"
+    r"operation|operations|crackdown|crackdowns|protest|protests|clashes)\b",
+    r"\bcivilian (?:casualt\w+|death|deaths|killed|wounded|injured|displaced|"
+    r"targeted|under fire|under attack|killings)\b",
+    r"\b(?:journalist|journalists|press|media|hospital|hospitals|school|"
+    r"schools|aid worker|aid workers|paramedic|paramedics) "
+    r"(?:killed|wounded|targeted|attacked|under fire|under attack|displaced|"
+    r"detained|abducted)\b",
+    r"\battacks? on (?:journalist|journalists|press|media|hospital|hospitals|"
+    r"school|schools|aid worker|aid workers|civilian|civilians)\b",
+    r"\bpress freedom in (?:occupied|gaza|ukraine|russia|iran|syria|yemen|"
+    r"war|conflict|wartime|china)\b",
+    r"\bmedia infrastructure (?:destruction|attack|damage|targeting|destroyed|"
+    r"attacked|damaged|targeted|wiped out)\b",
+    r"\bhumanitarian (?:crisis|catastrophe|disaster|corridor|corridors|"
+    r"truce|pause|ceasefire)\b",
+    r"\brefugee crisis\b",
+    r"\binternally displaced (?:person|persons|people|civilian|civilians)\b",
+    r"\bdeath toll (?:in|from|of|after) (?:gaza|ukraine|war|strike|strikes|"
+    r"attack|attacks|conflict|bombing|airstrike|airstrikes|raid|raids)\b",
+    r"\bmass grave\w*",
+    r"\bwar[- ]affected\b",
+    r"\boccupying force\w*",
+    r"\bsettler violence\b",
+    r"\bwar reporter\w*",
+    r"\bcombat journalis\w*",
+    r"\bwomen and children killed\b",
+    r"оккупирован\w+ палестинск\w+",
+    r"палестинск\w+ территори\w+",
+    r"\bсектор\w* Газ[ыеау]\b",
+    r"в Газ[еыау] (?:под|удар|обстрел|жертв|погиб|убит|разруш|гуманитар|"
+    r"конфликт|войн|перемир|больниц|госпитал)\w*",
+    r"удар\w+ по Газ[еыау]\b",
+    r"обстрел\w+ Газ[ыеау]\b",
+    r"журналист\w+ (?:погиб|убит|ранен|задержан|арестован|пропал|убива)\w*",
+    r"нападени\w+ на (?:журналист|медиа|пресс|редакци|больниц|школ|"
+    r"госпитал|мирн|гражданск)\w+",
+    r"разрушени\w+ медиа[- ]инфраструктур\w+",
+    r"уничтожени\w+ медиа[- ]инфраструктур\w+",
+    r"свобод\w+ прессы в (?:Газе|Газу|Газы|оккупир|зон\w* конфликт|"
+    r"зон\w* войн|Украин|России|Иран|Сири|Кита)\w*",
+    r"цензур\w+ в (?:зон\w+ (?:конфликт|войн|бо)|оккупир)\w*",
+    r"мирн\w+ жител\w+ (?:погиб|убит|ранен|пострада|расстрел)\w*",
+    r"гражданск\w+ (?:жертв|потер|погибш|убит|ранен|расстрел)\w*",
+    r"беженц\w+ из зон\w+ (?:конфликт|войн|бо)\w*",
+    r"вынужденн\w+ переселенц\w+",
+    r"гуманитарн\w+ (?:катастроф|кризис|корид|перемир|пауз)\w*",
+    r"массов\w+ захоронени\w+",
+    r"число (?:погибш|жертв|убит|ранен) (?:среди мирных|в Газ|в Украин|"
+    r"в результате удар|в результате обстрел|в результате авиауд|"
+    r"в результате бомб)\w*",
+    r"поселенческ\w+ насили\w+",
+    r"военн\w+ корреспондент\w+",
 ]
 
 _MILITARY_RE = re.compile("|".join(_MILITARY_PATTERNS), re.IGNORECASE)
@@ -393,6 +451,62 @@ def is_military_content(*texts: str) -> bool:
         if t and _MILITARY_RE.search(t):
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Vague-content filter
+# ---------------------------------------------------------------------------
+# Reject articles like "Учёные обнаружили четыре психических состояния..."
+# that lack any concrete entity (names, brands, numbers, organizations).
+# Heuristic: an article counts as concrete if at least one of these holds —
+#   - any digit anywhere (year, percentage, dollar amount, count)
+#   - any Latin word ≥ 3 chars (brand, abbreviation, acronym)
+#   - any mid-sentence Cyrillic capitalized word ≥ 4 chars (proper noun)
+# Otherwise it's "vague" and skipped.
+
+_DIGIT_RE = re.compile(r"\d")
+_LATIN_RE = re.compile(r"[A-Za-z]{3,}")
+# Generic plural collective nouns that are NOT concrete by themselves —
+# they routinely show up at sentence-start in vague AI summaries.
+_VAGUE_SENTENCE_STARTS = {
+    "учёные", "ученые", "исследователи", "эксперты", "специалисты",
+    "врачи", "медики", "психологи", "нейробиологи", "химики", "физики",
+    "биологи", "астрономы", "разработчики", "инженеры", "программисты",
+    "аналитики", "социологи", "экономисты", "археологи", "журналисты",
+    "научные", "научный", "новое", "новая", "новый", "новые",
+    "это", "этот", "эта", "эти", "своё", "свой", "своя", "свои",
+}
+
+
+def is_vague_content(title: str, description: str) -> bool:
+    """Return True if the article has no concrete entities (names, numbers, brands)."""
+    text = f"{title or ''}. {description or ''}".strip()
+    if not text:
+        return True
+    if _DIGIT_RE.search(text):
+        return False
+    if _LATIN_RE.search(text):
+        return False
+    # Look for mid-sentence Cyrillic proper nouns: split into sentences,
+    # drop the first capitalized word (sentence start), check the rest.
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        tokens = re.findall(r"[А-ЯЁ][а-яё]+(?:[-–—][А-ЯЁ][а-яё]+)*", sentence)
+        if not tokens:
+            continue
+        # First token is sentence start — discard it (and skip if it's a
+        # vague collective noun that the model loves to use).
+        head = tokens[0].lower()
+        rest = tokens[1:]
+        # If the sentence starts with something concrete that's NOT a vague
+        # collective, that head itself counts as a proper noun.
+        if head not in _VAGUE_SENTENCE_STARTS and len(head) >= 4:
+            # But only count it if the sentence has no real verb following —
+            # too risky; instead require at least one mid-sentence noun.
+            pass
+        for tok in rest:
+            if len(tok) >= 4 and tok.lower() not in _VAGUE_SENTENCE_STARTS:
+                return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +624,13 @@ async def _post_one(posted_urls: set, posted_titles: set, recent_tags: list) -> 
         # Skip war / military / defense industry content
         if is_military_content(article["title"], article["description"], article["url"]):
             logger.info("Skipped military content: %s", article["title"])
+            posted_urls.add(article["url"])
+            save_posted(article["url"])
+            continue
+
+        # Skip vague articles with no concrete entities (names, numbers, brands)
+        if is_vague_content(article["title"], article["description"]):
+            logger.info("Skipped vague content: %s", article["title"])
             posted_urls.add(article["url"])
             save_posted(article["url"])
             continue
