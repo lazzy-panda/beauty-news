@@ -456,57 +456,85 @@ def is_military_content(*texts: str) -> bool:
 # ---------------------------------------------------------------------------
 # Vague-content filter
 # ---------------------------------------------------------------------------
-# Reject articles like "Учёные обнаружили четыре психических состояния..."
-# that lack any concrete entity (names, brands, numbers, organizations).
-# Heuristic: an article counts as concrete if at least one of these holds —
-#   - any digit anywhere (year, percentage, dollar amount, count)
-#   - any Latin word ≥ 3 chars (brand, abbreviation, acronym)
-#   - any mid-sentence Cyrillic capitalized word ≥ 4 chars (proper noun)
-# Otherwise it's "vague" and skipped.
+# Reject articles that are pure platitudes — no specific people, brands,
+# universities, numbers. A post needs at least 2 distinct concrete tokens:
+#   - digit run (year, percentage, dollar amount, count) — "$5B", "2026", "78%"
+#   - Title-case word ≥3 chars not on the platitude stoplist — "Apple", "Цермело"
+#   - all-caps abbreviation ≥2 chars — "США", "ИИ", "AI", "MCP", "IBM"
+# Bilingual: works for English RSS source AND Russian source.
+#
+# Examples that get rejected:
+#   "Технологическая индустрия в основном ориентирована на США..."  (only "США")
+#   "Искусственный интеллект открывает новые горизонты для бизнеса..." (no entities)
+#   "Тридцать шесть лет спустя писатель возвращается..." (spelled-out number)
+#   "Researchers find new way to improve mood" (only stopword tokens)
 
-_DIGIT_RE = re.compile(r"\d")
-_LATIN_RE = re.compile(r"[A-Za-z]{3,}")
-# Generic plural collective nouns that are NOT concrete by themselves —
-# they routinely show up at sentence-start in vague AI summaries.
-_VAGUE_SENTENCE_STARTS = {
+_DIGIT_RE = re.compile(r"\d+")
+_CAP_WORD_RE = re.compile(r"\b[A-ZА-ЯЁ][A-Za-zА-ЯЁа-яё]{2,}\b")
+_ABBREV_RE = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
+
+# Platitude stopwords — capitalized at the start of vague summary sentences.
+# When these are the ONLY "named" tokens, the article is meaningless.
+_VAGUE_WORDS = {
+    # Russian collective nouns / generic adjectives / fillers
     "учёные", "ученые", "исследователи", "эксперты", "специалисты",
     "врачи", "медики", "психологи", "нейробиологи", "химики", "физики",
     "биологи", "астрономы", "разработчики", "инженеры", "программисты",
     "аналитики", "социологи", "экономисты", "археологи", "журналисты",
-    "научные", "научный", "новое", "новая", "новый", "новые",
-    "это", "этот", "эта", "эти", "своё", "свой", "своя", "свои",
+    "научные", "научный", "научная", "научное",
+    "новое", "новая", "новый", "новые", "новых", "новым", "нового",
+    "это", "этот", "эта", "эти", "этом", "этой", "этого",
+    "своё", "свой", "своя", "свои", "своих",
+    "технологическая", "технологический", "технологические", "технологическое",
+    "исторические", "исторический", "историческая", "историческое",
+    "однако", "важно", "стоит", "сегодня", "сейчас", "теперь",
+    "вчера", "завтра", "позже", "раньше",
+    "все", "всё", "всех", "всем", "всеми",
+    "большинство", "многое", "многие", "многих",
+    "искусственный", "искусственная", "искусственного", "искусственному",
+    "интеллект", "правительство", "общество", "пользователи",
+    "мифический", "мифическая", "мифическое",
+    "обычный", "обычная", "обычные", "обычное",
+    "глобальный", "глобальная", "глобальное", "глобальные", "глобальных",
+    "интересный", "интересная", "интересное", "интересные",
+    "будущее", "будущая", "будущий", "будущему",
+    "ситуация", "проблема", "вопрос", "тема",
+    "первый", "первая", "первое", "первые",
+    "второй", "вторая", "второе", "вторые",
+    "третий", "третья", "третье", "третьи",
+    "тридцать", "сорок", "пятьдесят", "семьдесят", "восемьдесят", "девяносто",
+    "сотни", "тысячи", "миллионы", "миллиарды",
+    # English fillers & generic nouns
+    "the", "and", "but", "however", "today", "tomorrow", "yesterday",
+    "researchers", "scientists", "experts", "specialists",
+    "developers", "engineers", "people", "users", "consumers",
+    "new", "this", "that", "these", "those", "now", "then",
+    "global", "future", "modern", "important", "interesting",
+    "company", "companies", "industry", "industries",
+    "world", "society", "government",
 }
 
 
 def is_vague_content(title: str, description: str) -> bool:
-    """Return True if the article has no concrete entities (names, numbers, brands)."""
+    """Return True if fewer than 2 distinct concrete tokens are present."""
     text = f"{title or ''}. {description or ''}".strip()
     if not text:
         return True
-    if _DIGIT_RE.search(text):
-        return False
-    if _LATIN_RE.search(text):
-        return False
-    # Look for mid-sentence Cyrillic proper nouns: split into sentences,
-    # drop the first capitalized word (sentence start), check the rest.
-    for sentence in re.split(r"(?<=[.!?])\s+", text):
-        tokens = re.findall(r"[А-ЯЁ][а-яё]+(?:[-–—][А-ЯЁ][а-яё]+)*", sentence)
-        if not tokens:
-            continue
-        # First token is sentence start — discard it (and skip if it's a
-        # vague collective noun that the model loves to use).
-        head = tokens[0].lower()
-        rest = tokens[1:]
-        # If the sentence starts with something concrete that's NOT a vague
-        # collective, that head itself counts as a proper noun.
-        if head not in _VAGUE_SENTENCE_STARTS and len(head) >= 4:
-            # But only count it if the sentence has no real verb following —
-            # too risky; instead require at least one mid-sentence noun.
-            pass
-        for tok in rest:
-            if len(tok) >= 4 and tok.lower() not in _VAGUE_SENTENCE_STARTS:
-                return False
-    return True
+
+    concrete: set[str] = set()
+
+    for m in _DIGIT_RE.finditer(text):
+        concrete.add("_d_" + m.group())
+
+    for m in _CAP_WORD_RE.finditer(text):
+        w = m.group()
+        if w.lower() not in _VAGUE_WORDS:
+            concrete.add(w.lower())
+
+    for m in _ABBREV_RE.finditer(text):
+        concrete.add(m.group().lower())
+
+    return len(concrete) < 2
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +669,20 @@ async def _post_one(posted_urls: set, posted_titles: set, recent_tags: list) -> 
                 text = format_russian_article(article["title"], article["description"])
             else:
                 text = await translate_article(article["title"], article["description"])
+                # Translator may return __SKIP__ for vague platitudes /
+                # mashed-up multi-topic posts / off-limit topics.
+                if text.strip().startswith("__SKIP__"):
+                    logger.info("Translator skipped: %s", article["title"])
+                    posted_urls.add(article["url"])
+                    save_posted(article["url"])
+                    continue
+                # Re-check translated text — catches English-source platitudes
+                # that slipped past the original-text filter.
+                if is_vague_content(article["title"], text):
+                    logger.info("Skipped vague translated text: %s", article["title"])
+                    posted_urls.add(article["url"])
+                    save_posted(article["url"])
+                    continue
                 text = await add_wiki_links(text)
             caption = build_caption(text, article["url"], article["hashtags"])
             ok = await send_photo(article["image_data"], caption)
