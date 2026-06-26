@@ -1,0 +1,40 @@
+name: Keepalive
+
+# GitHub disables scheduled (cron) workflows after 60 days without repository
+# activity. This bot runs purely on a schedule and never commits, so the timer
+# would eventually expire and silently stop rss-news.yml / beauty-news.yml.
+# Once the last commit is ~50 days old, push an empty commit to reset the timer.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Mondays 09:00 UTC
+  workflow_dispatch:       # manual trigger
+
+permissions:
+  contents: write          # needed to push the keepalive commit
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need commit history to read the last commit date
+
+      - name: Push empty commit if the repo has been idle
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          days=$(( (now - last) / 86400 ))
+          echo "Days since last commit: $days"
+
+          if [ "$days" -ge 50 ]; then
+            echo "Repo idle for $days days — pushing keepalive commit."
+            git commit --allow-empty -m "chore: keepalive — prevent scheduled workflow auto-disable"
+            git push
+          else
+            echo "Repo active ($days days < 50) — nothing to do."
+          fi
