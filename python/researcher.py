@@ -90,8 +90,15 @@ async def run_research_session() -> dict:
         source_titles = [s.get("title", "") for s in sources if s.get("title")]
         news_log.save_entry(notebook_id, summary, source_titles)
 
-        # 5. Import research sources into the notebook
-        task_id = (research_status or {}).get("task_id") or research_result.get("task_id")
+        # 5. Import research sources into the notebook.
+        # The id must be the one the sources were discovered under: 0.8.0 rejects
+        # the batch if a source's research_task_id differs from the task_id passed.
+        # research.start() returns a different, opaque id — prefer the sources' own.
+        task_id = (
+            next((s.get("research_task_id") for s in sources if s.get("research_task_id")), "")
+            or research_result.get("task_id")
+            or (research_status or {}).get("task_id")
+        )
         if task_id and sources:
             logger.info("Importing %d sources...", len(sources))
             try:
@@ -110,6 +117,7 @@ async def run_research_session() -> dict:
 
         # Audio (with retry on rate limit)
         logger.info("Generating audio...")
+        audio_error: Exception | None = None
         try:
             audio_task = await _generate_audio_with_retry(client, notebook_id)
             logger.info("Waiting for audio completion (task_id=%s)...", audio_task.task_id)
@@ -128,6 +136,7 @@ async def run_research_session() -> dict:
             await telegram_sender.send_audio(str(audio_path), caption=caption)
         except Exception as exc:
             logger.error("Audio failed: %s", exc, exc_info=True)
+            audio_error = exc
 
         # Video (optional)
         if getattr(config, "GENERATE_VIDEO", True):
@@ -153,6 +162,12 @@ async def run_research_session() -> dict:
             logger.info("Notebook deleted: %s", notebook_id)
         except Exception as exc:
             logger.warning("Notebook deletion failed (non-fatal): %s", exc)
+
+        # A run that produced no podcast is not a success. Without this the job
+        # exits 0, the failure notification never fires, and the channel goes
+        # quiet unnoticed — which is exactly how the 2026-08-03 outage hid.
+        if audio_error is not None:
+            raise RuntimeError(f"No podcast produced: {audio_error}") from audio_error
 
         logger.info("Session complete. Results: %s", results)
         return results
@@ -184,7 +199,9 @@ async def _start_research_with_retry(client, notebook_id: str, prompt: str) -> d
                     mode=mode,
                 )
                 logger.info("Research started with mode='%s'.", mode)
-                return result or {}
+                # notebooklm-py 0.8.0 returns a ResearchStart dataclass; the dict
+                # bridge was removed. to_public_dict() gives the legacy shape.
+                return result.to_public_dict() if result else {}
             except RateLimitError as exc:
                 logger.warning("Rate limit on mode='%s', attempt %d: %s", mode, attempt, exc)
                 last_exc = exc
@@ -206,7 +223,8 @@ async def _wait_for_research(client, notebook_id: str) -> dict:
     """Poll research.poll() until status == 'completed'."""
     deadline = asyncio.get_event_loop().time() + config.RESEARCH_TIMEOUT
     while asyncio.get_event_loop().time() < deadline:
-        result = await client.research.poll(notebook_id)
+        # 0.8.0 returns a ResearchTask dataclass; convert to the legacy dict shape.
+        result = (await client.research.poll(notebook_id)).to_public_dict()
         status = result.get("status", "")
         logger.debug("Research poll: status=%s", status)
         if status == "completed":

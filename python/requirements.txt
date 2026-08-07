@@ -1,4 +1,6 @@
-notebooklm-py[browser]>=0.3.3
+# Upper bound is deliberate: 0.8.0 removed the dict bridge on result objects
+# and silently broke the pipeline. Bump only together with a code review.
+notebooklm-py[browser]>=0.8,<0.9
 feedparser>=6.0.11
 openai>=1.30.0
 beautifulsoup4>=4.12.0
