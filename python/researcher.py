@@ -17,6 +17,7 @@ from notebooklm import (
     RPCTimeoutError,
     NetworkError,
     RateLimitError,
+    ServerError,
 )
 
 import config
@@ -222,9 +223,28 @@ async def _start_research_with_retry(client, notebook_id: str, prompt: str) -> d
 async def _wait_for_research(client, notebook_id: str) -> dict:
     """Poll research.poll() until status == 'completed'."""
     deadline = asyncio.get_event_loop().time() + config.RESEARCH_TIMEOUT
+    transient_failures = 0
     while asyncio.get_event_loop().time() < deadline:
-        # 0.8.0 returns a ResearchTask dataclass; convert to the legacy dict shape.
-        result = (await client.research.poll(notebook_id)).to_public_dict()
+        try:
+            # 0.8.0 returns a ResearchTask dataclass; convert to the legacy dict shape.
+            result = (await client.research.poll(notebook_id)).to_public_dict()
+        except (NetworkError, ServerError) as exc:
+            # A dropped connection or a 5xx is transient — the research keeps
+            # running server-side, so retry until the deadline instead of losing
+            # the whole session to one bad poll. RPCTimeoutError lands here via
+            # NetworkError; note it is NOT a builtin TimeoutError, so without
+            # this it escaped the caller's `except TimeoutError` and killed the
+            # run (observed 2026-08-07, run 31159831910). Auth, rate-limit and
+            # decode errors deliberately propagate.
+            transient_failures += 1
+            logger.warning(
+                "Research poll failed (transient #%d, retrying): %s", transient_failures, exc
+            )
+            await asyncio.sleep(10)
+            continue
+        if transient_failures:
+            logger.info("Research poll recovered after %d transient failure(s).", transient_failures)
+            transient_failures = 0
         status = result.get("status", "")
         logger.debug("Research poll: status=%s", status)
         if status == "completed":
